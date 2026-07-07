@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Ledger — Expense Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --cover:#16332B;
+    --cover-dark:#0E241D;
+    --paper:#F7EFDA;
+    --card:#FFFCF4;
+    --ink:#20302A;
+    --ink-soft:#5B6B62;
+    --brass:#B8892C;
+    --brass-dark:#8F6A1F;
+    --stamp:#A13D2E;
+    --line:#D8CBA8;
+    --shadow: 0 6px 18px rgba(14,36,29,0.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Inter',sans-serif;
+    background:var(--cover);
+    color:var(--ink);
+    min-height:100vh;
+  }
+  .spine{
+    position:fixed;
+    top:0;left:0;right:0;height:6px;
+    background:repeating-linear-gradient(90deg, var(--brass) 0 18px, var(--brass-dark) 18px 20px);
+    z-index:50;
+  }
+  header{
+    background:var(--cover);
+    color:#F1EAD4;
+    padding:28px 20px 0 20px;
+    text-align:center;
+  }
+  header h1{
+    font-family:'Spectral',serif;
+    font-weight:700;
+    font-size:clamp(28px,5vw,40px);
+    margin:6px 0 2px 0;
+    letter-spacing:0.5px;
+  }
+  header .eyebrow{
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    letter-spacing:3px;
+    text-transform:uppercase;
+    color:var(--brass);
+  }
+  header .tagline{
+    font-size:13px;
+    color:#C9C3AB;
+    margin-bottom:20px;
+  }
+
+  .totals-strip{
+    max-width:920px;
+    margin:0 auto;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px;
+    padding:0 20px 20px 20px;
+  }
+  .total-card{
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(184,137,44,0.35);
+    border-radius:6px;
+    padding:10px 14px;
+    text-align:left;
+  }
+  .total-card .label{
+    font-size:10px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:var(--brass);
+    font-family:'Space Mono',monospace;
+  }
+  .total-card .amount{
+    font-family:'Space Mono',monospace;
+    font-size:18px;
+    font-weight:700;
+    color:#F7F2E2;
+    margin-top:2px;
+  }
+  .total-card .amount span{display:block;font-size:14px;}
+  .total-card.grand{
+    background:var(--brass);
+    border-color:var(--brass);
+  }
+  .total-card.grand .label{color:var(--cover-dark);}
+  .total-card.grand .amount{color:var(--cover-dark);}
+
+  nav{
+    display:flex;
+    justify-content:center;
+    gap:0;
+    max-width:920px;
+    margin:0 auto;
+    padding:0 20px;
+  }
+  .tab{
+    flex:1;
+    text-align:center;
+    padding:14px 10px 12px 10px;
+    font-family:'Spectral',serif;
+    font-weight:600;
+    font-size:14px;
+    color:#DCD5BC;
+    background:var(--cover-dark);
+    border:none;
+    cursor:pointer;
+    clip-path:polygon(6% 0,94% 0,100% 100%,0% 100%);
+    margin:0 -2px;
+    position:relative;
+    transition:background .15s, color .15s;
+  }
+  .tab small{
+    display:block;
+    font-family:'Space Mono',monospace;
+    font-size:9px;
+    letter-spacing:1px;
+    color:#8F9A8C;
+    margin-top:2px;
+  }
+  .tab.active{
+    background:var(--paper);
+    color:var(--cover);
+    z-index:2;
+  }
+  .tab.active small{color:var(--ink-soft);}
+  .tab:hover:not(.active){background:#1D4436;}
+
+  main{
+    background:var(--paper);
+    min-height:60vh;
+    padding:26px 20px 60px 20px;
+  }
+  .page{
+    max-width:920px;
+    margin:0 auto;
+    display:none;
+  }
+  .page.active{display:block;}
+
+  .category-heading{
+    font-family:'Spectral',serif;
+    font-size:22px;
+    font-weight:700;
+    margin:0 0 4px 0;
+  }
+  .category-sub{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin:0 0 20px 0;
+  }
+
+  .entry-form{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:20px;
+    box-shadow:var(--shadow);
+    margin-bottom:28px;
+  }
+  .form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+  }
+  .form-grid .full{grid-column:1/-1;}
+  label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--ink-soft);
+    display:block;
+    margin-bottom:5px;
+    font-family:'Space Mono',monospace;
+  }
+  input[type=text],input[type=number],input[type=datetime-local],select,textarea{
+    width:100%;
+    padding:10px 11px;
+    border:1px solid var(--line);
+    border-radius:5px;
+    background:#fff;
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    color:var(--ink);
+  }
+  input:focus,select:focus,textarea:focus{
+    outline:2px solid var(--brass);
+    outline-offset:1px;
+  }
+  .amount-row{display:flex;gap:8px;}
+  .amount-row input{flex:2;}
+  .amount-row select{flex:1;}
+
+  .photo-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .photo-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    background:var(--cover);
+    color:#F1EAD4;
+    border:none;
+    padding:10px 16px;
+    border-radius:5px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .photo-btn:hover{background:var(--cover-dark);}
+  .photo-preview{
+    width:52px;height:52px;
+    border-radius:5px;
+    object-fit:cover;
+    border:1px solid var(--line);
+  }
+  .photo-clear{
+    background:none;border:none;color:var(--stamp);cursor:pointer;font-size:12px;text-decoration:underline;
+  }
+
+  .submit-btn{
+    margin-top:18px;
+    background:var(--stamp);
+    color:#FBF3E7;
+    border:none;
+    padding:12px 24px;
+    border-radius:5px;
+    font-family:'Spectral',serif;
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.5px;
+    cursor:pointer;
+    width:100%;
+  }
+  .submit-btn:hover{background:#832F23;}
+
+  .entries-list{display:flex;flex-direction:column;gap:20px;}
+  .empty-state{
+    text-align:center;
+    padding:40px 20px;
+    color:var(--ink-soft);
+    font-size:14px;
+  }
+  .empty-state .stamp-mark{
+    font-family:'Space Mono',monospace;
+    color:var(--stamp);
+    border:2px dashed var(--stamp);
+    display:inline-block;
+    padding:8px 16px;
+    transform:rotate(-4deg);
+    margin-bottom:14px;
+    font-size:12px;
+    letter-spacing:2px;
+  }
+
+  .receipt-card{
+    position:relative;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:6px 6px 0 0;
+    padding:16px 18px 20px 18px;
+    box-shadow:var(--shadow);
+    display:flex;
+    gap:14px;
+    align-items:flex-start;
+  }
+  .receipt-card::after{
+    content:'';
+    position:absolute;
+    left:0;right:0;bottom:-7px;height:14px;
+    background: radial-gradient(circle at center, var(--paper) 6px, transparent 7px) repeat-x;
+    background-size:16px 14px;
+    background-position:8px -7px;
+  }
+  .receipt-thumb{
+    width:56px;height:56px;
+    border-radius:5px;
+    object-fit:cover;
+    border:1px solid var(--line);
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .receipt-thumb-placeholder{
+    width:56px;height:56px;
+    border-radius:5px;
+    border:1px dashed var(--line);
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:9px;
+    color:var(--ink-soft);
+    text-align:center;
+    font-family:'Space Mono',monospace;
+  }
+  .receipt-body{flex:1;min-width:0;}
+  .receipt-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+  }
+  .receipt-desc{
+    font-family:'Spectral',serif;
+    font-weight:600;
+    font-size:16px;
+    margin:0 0 3px 0;
+    word-break:break-word;
+  }
+  .receipt-date{
+    font-family:'Space Mono',monospace;
+    font-size:11px;
+    color:var(--ink-soft);
+  }
+  .receipt-amount{
+    font-family:'Space Mono',monospace;
+    font-weight:700;
+    font-size:18px;
+    white-space:nowrap;
+    color:var(--ink);
+  }
+  .receipt-actions{
+    margin-top:8px;
+    display:flex;
+    gap:14px;
+  }
+  .receipt-actions button{
+    background:none;
+    border:none;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--ink-soft);
+    cursor:pointer;
+    font-family:'Space Mono',monospace;
+    padding:0;
+  }
+  .receipt-actions button.danger{color:var(--stamp);}
+  .receipt-actions button.reimburse-btn{color:var(--brass-dark);}
+  .receipt-actions button:hover{text-decoration:underline;}
+
+  .subcat-chip{
+    display:inline-block;
+    font-family:'Space Mono',monospace;
+    font-size:9px;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    background:var(--paper);
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    padding:2px 7px;
+    border-radius:10px;
+    margin-left:8px;
+    vertical-align:middle;
+    text-decoration:none;
+  }
+  .reimbursed-badge{
+    font-family:'Space Mono',monospace;
+    font-size:10px;
+    color:#2E6B3E;
+    border:1px solid #2E6B3E;
+    padding:3px 9px;
+    border-radius:10px;
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+  }
+
+  .month-group{margin-bottom:24px;}
+  .month-header{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--cover);
+    color:#F1EAD4;
+    border:none;
+    padding:11px 16px;
+    border-radius:6px;
+    cursor:pointer;
+    text-align:left;
+  }
+  .month-header .month-label{
+    font-family:'Spectral',serif;
+    font-size:15px;
+    font-weight:600;
+    white-space:nowrap;
+  }
+  .month-header .month-meta{
+    color:#C9C3AB;
+    font-size:11px;
+    font-family:'Space Mono',monospace;
+    flex:1;
+    text-align:right;
+  }
+  .month-header .month-chevron{color:var(--brass);font-size:13px;}
+  .month-body{
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+    padding-top:18px;
+  }
+
+  .reminder-banner{
+    max-width:880px;
+    margin:0 auto 18px auto;
+    background:var(--brass);
+    color:var(--cover-dark);
+    padding:12px 18px;
+    border-radius:6px;
+    display:none;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    font-size:13px;
+    font-weight:600;
+    text-align:left;
+  }
+  .reminder-banner.show{display:flex;}
+  .reminder-banner .banner-actions{display:flex;gap:10px;align-items:center;flex-shrink:0;}
+  .reminder-banner button{
+    border:none;
+    border-radius:5px;
+    padding:7px 14px;
+    font-size:12px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .reminder-banner .banner-export{background:var(--cover);color:#F1EAD4;}
+  .reminder-banner .banner-dismiss{background:transparent;color:var(--cover-dark);text-decoration:underline;}
+  @media (max-width:560px){
+    .reminder-banner{flex-direction:column;align-items:flex-start;}
+  }
+
+  .export-bar{
+    max-width:920px;
+    margin:0 auto 22px auto;
+    display:flex;
+    justify-content:flex-end;
+    padding:0 20px;
+  }
+  .export-btn{
+    background:var(--brass);
+    color:var(--cover-dark);
+    border:none;
+    padding:11px 20px;
+    border-radius:5px;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .export-btn:hover{background:#CBA043;}
+
+  /* modal */
+  .modal-overlay{
+    position:fixed;inset:0;
+    background:rgba(14,36,29,0.75);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:100;
+    padding:20px;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-box{
+    background:var(--card);
+    border-radius:8px;
+    padding:20px;
+    max-width:480px;
+    width:100%;
+    text-align:center;
+    box-shadow:var(--shadow);
+  }
+  .modal-box img{max-width:100%;border-radius:6px;max-height:70vh;object-fit:contain;}
+  .modal-box p{font-size:14px;color:var(--ink);margin:0 0 18px 0;}
+  .modal-actions{display:flex;gap:10px;justify-content:center;margin-top:14px;}
+  .modal-actions button{
+    padding:9px 18px;border-radius:5px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;
+  }
+  .modal-actions .confirm{background:var(--stamp);color:#fff;}
+  .modal-actions .cancel{background:#E8E1CC;color:var(--ink);}
+  .modal-close{
+    display:block;margin:14px auto 0 auto;background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:12px;text-decoration:underline;
+  }
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--cover);color:#F1EAD4;
+    padding:11px 22px;border-radius:6px;font-size:13px;
+    box-shadow:var(--shadow);
+    opacity:0;pointer-events:none;
+    transition:opacity .25s;
+    z-index:200;
+    font-family:'Inter',sans-serif;
+  }
+  .toast.show{opacity:1;}
+
+  .month-select-wrap{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(184,137,44,0.4);
+    border-radius:6px;
+    padding:6px 8px 6px 14px;
+    margin-bottom:18px;
+  }
+  .month-select-wrap .rev-label{
+    font-family:'Space Mono',monospace;
+    font-size:10px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:#C9C3AB;
+  }
+  .month-select-wrap select{
+    background:var(--cover-dark);
+    color:#F1EAD4;
+    border:1px solid var(--brass);
+    border-radius:4px;
+    padding:5px 10px;
+    font-family:'Space Mono',monospace;
+    font-size:12px;
+    width:auto;
+  }
+
+  @media (max-width:560px){
+    .form-grid{grid-template-columns:1fr;}
+    .tab{font-size:12px;padding:12px 6px 10px 6px;}
+    .receipt-amount{font-size:15px;}
+  }
+</style>
+</head>
+<body>
+<div class="spine"></div>
+<header>
+  <div class="eyebrow">Personal Ledger</div>
+  <h1 id="headerMonthTitle">July 2026</h1>
+  <div class="tagline">Every receipt, recorded and reconciled.</div>
+  <div class="month-select-wrap">
+    <span class="rev-label">Reviewing</span>
+    <select id="monthSelector" onchange="onMonthSelectorChange(this.value)"></select>
+  </div>
+  <div class="totals-strip" id="totalsStrip"></div>
+</header>
+
+<div class="reminder-banner" id="reminderBanner">
+  <span>📌 It's almost month-end — remember to export this month's expenses to Excel.</span>
+  <div class="banner-actions">
+    <button class="banner-export" onclick="exportFromBanner()">Export now</button>
+    <button class="banner-dismiss" onclick="dismissReminder()">Dismiss</button>
+  </div>
+</div>
+
+<nav>
+  <button class="tab active" data-cat="office" onclick="switchTab('office')">
+    Office Management<small>EXPENSES</small>
+  </button>
+  <button class="tab" data-cat="food" onclick="switchTab('food')" title="OOL = Oneness of Love">
+    OOL Food &amp; Beverages<small>OOL = ONENESS OF LOVE</small>
+  </button>
+  <button class="tab" data-cat="transport" onclick="switchTab('transport')" title="OOL = Oneness of Love">
+    OOL Transport<small>OOL = ONENESS OF LOVE</small>
+  </button>
+</nav>
+
+<main>
+  <div class="export-bar">
+    <button class="export-btn" onclick="exportToExcel()">⬇ Export all to Excel</button>
+  </div>
+
+  <div class="page active" id="page-office">
+    <h2 class="category-heading">Office Management Expenses</h2>
+    <p class="category-sub">Supplies, admin costs, and day-to-day office spend.</p>
+    <div class="entry-form">
+      <form id="form-office" class="expense-form" data-cat="office"></form>
+    </div>
+    <div class="entries-list" id="list-office"></div>
+  </div>
+
+  <div class="page" id="page-food">
+    <h2 class="category-heading">OOL Food &amp; Beverages Expenses</h2>
+    <p class="category-sub">Meals and refreshments for Oneness of Love.</p>
+    <div class="entry-form">
+      <form id="form-food" class="expense-form" data-cat="food"></form>
+    </div>
+    <div class="entries-list" id="list-food"></div>
+  </div>
+
+  <div class="page" id="page-transport">
+    <h2 class="category-heading">OOL Transport Expenses</h2>
+    <p class="category-sub">Travel and transport costs for Oneness of Love.</p>
+    <div class="entry-form">
+      <form id="form-transport" class="expense-form" data-cat="transport"></form>
+    </div>
+    <div class="entries-list" id="list-transport"></div>
+  </div>
+</main>
+
+<div class="modal-overlay" id="photoModal">
+  <div class="modal-box">
+    <img id="photoModalImg" src="" alt="Receipt photo">
+    <button class="modal-close" onclick="closeModal('photoModal')">Close</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-box">
+    <p>Delete this expense? This can't be undone.</p>
+    <div class="modal-actions">
+      <button class="cancel" onclick="closeModal('confirmModal')">Cancel</button>
+      <button class="confirm" id="confirmDeleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATEGORIES = {
+  office: 'Office Management',
+  food: 'OOL Food & Beverages',
+  transport: 'OOL Transport'
+};
+const CURRENCIES = ['SGD','USD','EUR','GBP','MYR','IDR','JPY','AUD','OTHER'];
+const OFFICE_SUBCATEGORIES = [
+  { value:'transport', label:'Transport' },
+  { value:'flowers_fruits', label:'Flowers and Fruits' },
+  { value:'office_supplies', label:'Office Supplies' },
+  { value:'others', label:'Others' }
+];
+
+let expenses = []; // {id, category, subcategory?, subcategoryOther?, amount, currency, description, datetime, hasPhoto, reimbursed?, reimbursedAt?}
+let pendingPhotoDataUrl = null;
+let deleteTargetId = null;
+let expandedMonths = {}; // session-only accordion state, keyed "cat|YYYY-MM"
+let selectedMonth = null; // 'YYYY-MM' or 'ALL'
+
+// ---------- storage helpers ----------
+async function loadIndex(){
+  try{
+    const res = await window.storage.get('expenses-index', false);
+    return res && res.value ? JSON.parse(res.value) : [];
+  }catch(e){ return []; }
+}
+async function saveIndex(){
+  try{
+    await window.storage.set('expenses-index', JSON.stringify(expenses), false);
+  }catch(e){ showToast('Could not save — storage error'); }
+}
+async function getPhoto(id){
+  try{
+    const res = await window.storage.get('photo:'+id, false);
+    return res ? res.value : null;
+  }catch(e){ return null; }
+}
+async function savePhoto(id, dataUrl){
+  try{ await window.storage.set('photo:'+id, dataUrl, false); }catch(e){}
+}
+async function deletePhotoKey(id){
+  try{ await window.storage.delete('photo:'+id, false); }catch(e){}
+}
+
+// ---------- form building ----------
+function buildForm(cat){
+  const form = document.getElementById('form-'+cat);
+  const now = new Date();
+  const localVal = new Date(now.getTime() - now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  form.innerHTML = `
+    <div class="form-grid">
+      <div class="full">
+        <label>Description</label>
+        <input type="text" name="description" placeholder="e.g. Printer paper, Grab to venue, Team lunch" required>
+      </div>
+      <div>
+        <label>Amount</label>
+        <div class="amount-row">
+          <input type="number" name="amount" step="0.01" min="0" placeholder="0.00" required>
+          <select name="currency">
+            ${CURRENCIES.map(c=>`<option value="${c}" ${c==='SGD'?'selected':''}>${c==='OTHER'?'Other':c}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div id="customCurrencyWrap-${cat}" style="display:none;">
+        <label>Custom currency code</label>
+        <input type="text" name="customCurrency" placeholder="e.g. THB" maxlength="6">
+      </div>
+      ${cat === 'office' ? `
+      <div>
+        <label>Sub-category</label>
+        <select name="subcategory">
+          ${OFFICE_SUBCATEGORIES.map(s=>`<option value="${s.value}">${s.label}</option>`).join('')}
+        </select>
+      </div>
+      <div id="customSubcatWrap-office" style="display:none;">
+        <label>Specify</label>
+        <input type="text" name="subcategoryOther" placeholder="e.g. Cleaning service" maxlength="60">
+      </div>
+      ` : ''}
+      <div>
+        <label>Date &amp; time</label>
+        <input type="datetime-local" name="datetime" value="${localVal}" required>
+      </div>
+      <div class="full">
+        <label>Receipt photo</label>
+        <div class="photo-row">
+          <button type="button" class="photo-btn" onclick="triggerPhoto('${cat}')">📷 Take / upload photo</button>
+          <input type="file" accept="image/*" capture="environment" id="photoInput-${cat}" style="display:none;" onchange="handlePhoto(event,'${cat}')">
+          <img class="photo-preview" id="photoPreview-${cat}" style="display:none;">
+          <button type="button" class="photo-clear" id="photoClear-${cat}" style="display:none;" onclick="clearPhoto('${cat}')">Remove</button>
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="submit-btn">Record expense</button>
+  `;
+  form.querySelector(`select[name=currency]`).addEventListener('change', (e)=>{
+    document.getElementById(`customCurrencyWrap-${cat}`).style.display = e.target.value==='OTHER' ? 'block':'none';
+  });
+  if(cat === 'office'){
+    form.querySelector(`select[name=subcategory]`).addEventListener('change', (e)=>{
+      document.getElementById('customSubcatWrap-office').style.display = e.target.value==='others' ? 'block':'none';
+    });
+  }
+  form.addEventListener('submit', (e)=>handleSubmit(e, cat));
+}
+
+function triggerPhoto(cat){
+  document.getElementById('photoInput-'+cat).click();
+}
+
+function compressImage(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 1000;
+        let w = img.width, h = img.height;
+        if(w > maxW){ h = Math.round(h*(maxW/w)); w = maxW; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePhoto(event, cat){
+  const file = event.target.files[0];
+  if(!file) return;
+  try{
+    pendingPhotoDataUrl = await compressImage(file);
+    const preview = document.getElementById('photoPreview-'+cat);
+    preview.src = pendingPhotoDataUrl;
+    preview.style.display = 'inline-block';
+    document.getElementById('photoClear-'+cat).style.display = 'inline-block';
+  }catch(e){
+    showToast('Could not process that photo');
+  }
+}
+
+function clearPhoto(cat){
+  pendingPhotoDataUrl = null;
+  const preview = document.getElementById('photoPreview-'+cat);
+  preview.style.display = 'none';
+  preview.src = '';
+  document.getElementById('photoClear-'+cat).style.display = 'none';
+  document.getElementById('photoInput-'+cat).value = '';
+}
+
+async function handleSubmit(e, cat){
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const description = fd.get('description').trim();
+  const amount = parseFloat(fd.get('amount'));
+  let currency = fd.get('currency');
+  if(currency === 'OTHER'){
+    const custom = (fd.get('customCurrency')||'').trim().toUpperCase();
+    currency = custom || 'OTHER';
+  }
+  const datetime = fd.get('datetime');
+  if(!description || isNaN(amount) || amount <= 0 || !datetime){
+    showToast('Please fill in description, amount, and date');
+    return;
+  }
+
+  let subcategory, subcategoryOther;
+  if(cat === 'office'){
+    subcategory = fd.get('subcategory');
+    if(subcategory === 'others'){
+      subcategoryOther = (fd.get('subcategoryOther')||'').trim();
+      if(!subcategoryOther){
+        showToast('Please specify the "Others" sub-category');
+        return;
+      }
+    }
+  }
+
+  const id = 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  const hasPhoto = !!pendingPhotoDataUrl;
+  if(hasPhoto){
+    await savePhoto(id, pendingPhotoDataUrl);
+  }
+
+  const entry = { id, category: cat, amount, currency, description, datetime, hasPhoto };
+  if(cat === 'office'){
+    entry.subcategory = subcategory;
+    entry.subcategoryOther = subcategoryOther || '';
+    entry.reimbursed = false;
+    entry.reimbursedAt = null;
+  }
+  expenses.unshift(entry);
+  await saveIndex();
+
+  form.reset();
+  clearPhoto(cat);
+  buildForm(cat); // rebuild to reset custom currency visibility & datetime default
+  populateMonthSelector();
+  updateHeaderTitle();
+  renderCategory(cat);
+  renderTotals();
+  showToast('Expense recorded');
+}
+
+// ---------- rendering ----------
+function formatDateTime(val){
+  const d = new Date(val);
+  if(isNaN(d)) return val;
+  return d.toLocaleString(undefined, { day:'2-digit', month:'short', year:'numeric', hour:'numeric', minute:'2-digit' });
+}
+function formatAmount(amount, currency){
+  return currency + ' ' + Number(amount).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function monthKeyOf(datetime){
+  const d = new Date(datetime);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function monthLabel(key){
+  const [y,m] = key.split('-').map(Number);
+  return new Date(y, m-1, 1).toLocaleDateString(undefined, { month:'long', year:'numeric' });
+}
+function subcategoryLabel(item){
+  if(item.subcategory === 'others') return escapeHtml(item.subcategoryOther || 'Others');
+  const found = OFFICE_SUBCATEGORIES.find(s=>s.value===item.subcategory);
+  return found ? found.label : '';
+}
+
+function renderReceiptCard(item){
+  const subChip = item.category==='office' ? `<span class="subcat-chip">${subcategoryLabel(item)}</span>` : '';
+  let reimburseBlock = '';
+  if(item.category === 'office'){
+    reimburseBlock = item.reimbursed
+      ? `<span class="reimbursed-badge">✓ Reimbursed${item.reimbursedAt ? ' · '+formatDateTime(item.reimbursedAt) : ''}</span><button onclick="toggleReimbursed('${item.id}')">Undo</button>`
+      : `<button class="reimburse-btn" onclick="toggleReimbursed('${item.id}')">Mark as reimbursed</button>`;
+  }
+  return `
+    <div class="receipt-card" data-id="${item.id}">
+      ${item.hasPhoto
+        ? `<img class="receipt-thumb" src="" data-id="${item.id}" onclick="viewPhoto('${item.id}')" alt="Receipt thumbnail">`
+        : `<div class="receipt-thumb-placeholder">NO<br>PHOTO</div>`}
+      <div class="receipt-body">
+        <div class="receipt-top">
+          <div>
+            <p class="receipt-desc">${escapeHtml(item.description)}${subChip}</p>
+            <div class="receipt-date">${formatDateTime(item.datetime)}</div>
+          </div>
+          <div class="receipt-amount">${formatAmount(item.amount, item.currency)}</div>
+        </div>
+        <div class="receipt-actions">
+          ${item.hasPhoto ? `<button onclick="viewPhoto('${item.id}')">View receipt</button>` : ''}
+          ${reimburseBlock}
+          <button class="danger" onclick="askDelete('${item.id}')">Delete</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCategory(cat){
+  const list = document.getElementById('list-'+cat);
+  const allItems = expenses.filter(x=>x.category===cat);
+  const items = (selectedMonth === 'ALL' ? allItems : allItems.filter(x=>monthKeyOf(x.datetime)===selectedMonth))
+    .sort((a,b)=> new Date(b.datetime)-new Date(a.datetime));
+
+  if(items.length === 0){
+    const emptyMsg = selectedMonth === 'ALL' ? 'Record your first expense above.' : 'No expenses recorded for this month.';
+    list.innerHTML = `<div class="empty-state"><div class="stamp-mark">NO ENTRIES</div><div>${emptyMsg}</div></div>`;
+    return;
+  }
+
+  if(selectedMonth === 'ALL'){
+    const groups = {};
+    items.forEach(item=>{
+      const key = monthKeyOf(item.datetime);
+      (groups[key] = groups[key] || []).push(item);
+    });
+    const monthKeys = Object.keys(groups).sort().reverse();
+    list.innerHTML = monthKeys.map((key, idx) => {
+      const monthItems = groups[key];
+      const stateKey = cat + '|' + key;
+      const isOpen = expandedMonths.hasOwnProperty(stateKey) ? expandedMonths[stateKey] : idx === 0;
+      expandedMonths[stateKey] = isOpen;
+      const totals = {};
+      monthItems.forEach(i => totals[i.currency] = (totals[i.currency]||0) + i.amount);
+      const totalsStr = Object.keys(totals).map(cur => formatAmount(totals[cur], cur)).join(' · ');
+      return `
+        <div class="month-group">
+          <button class="month-header" onclick="toggleMonth('${cat}','${key}')">
+            <span class="month-label">${monthLabel(key)}</span>
+            <span class="month-meta">${monthItems.length} ${monthItems.length===1?'entry':'entries'} · ${totalsStr}</span>
+            <span class="month-chevron">${isOpen ? '▾' : '▸'}</span>
+          </button>
+          <div class="month-body" style="display:${isOpen ? 'flex' : 'none'}">
+            ${monthItems.map(renderReceiptCard).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } else {
+    list.innerHTML = items.map(renderReceiptCard).join('');
+  }
+
+  // lazy-load thumbnails
+  items.filter(i=>i.hasPhoto).forEach(async item=>{
+    const dataUrl = await getPhoto(item.id);
+    if(dataUrl){
+      const img = list.querySelector(`.receipt-thumb[data-id="${item.id}"]`);
+      if(img) img.src = dataUrl;
+    }
+  });
+}
+
+function toggleMonth(cat, key){
+  expandedMonths[cat+'|'+key] = !expandedMonths[cat+'|'+key];
+  renderCategory(cat);
+}
+
+async function toggleReimbursed(id){
+  const item = expenses.find(e=>e.id===id);
+  if(!item) return;
+  item.reimbursed = !item.reimbursed;
+  item.reimbursedAt = item.reimbursed ? new Date().toISOString() : null;
+  await saveIndex();
+  renderCategory(item.category);
+  showToast(item.reimbursed ? 'Marked as reimbursed' : 'Reimbursement undone');
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function renderTotals(){
+  const strip = document.getElementById('totalsStrip');
+  const relevant = selectedMonth === 'ALL' ? expenses : expenses.filter(e=>monthKeyOf(e.datetime)===selectedMonth);
+  const byCategory = {};
+  const grand = {};
+  Object.keys(CATEGORIES).forEach(c=>byCategory[c] = {});
+  relevant.forEach(e=>{
+    byCategory[e.category][e.currency] = (byCategory[e.category][e.currency]||0) + e.amount;
+    grand[e.currency] = (grand[e.currency]||0) + e.amount;
+  });
+  function lines(obj){
+    const keys = Object.keys(obj);
+    if(keys.length===0) return '<span>—</span>';
+    return keys.map(cur => `<span>${formatAmount(obj[cur],cur)}</span>`).join('');
+  }
+  strip.innerHTML = `
+    <div class="total-card">
+      <div class="label">Office</div>
+      <div class="amount">${lines(byCategory.office)}</div>
+    </div>
+    <div class="total-card">
+      <div class="label">OOL Food &amp; Bev</div>
+      <div class="amount">${lines(byCategory.food)}</div>
+    </div>
+    <div class="total-card">
+      <div class="label">OOL Transport</div>
+      <div class="amount">${lines(byCategory.transport)}</div>
+    </div>
+    <div class="total-card grand">
+      <div class="label">Grand total</div>
+      <div class="amount">${lines(grand)}</div>
+    </div>
+  `;
+}
+
+// ---------- month selector ----------
+function currentMonthKey(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function updateHeaderTitle(){
+  document.getElementById('headerMonthTitle').textContent = selectedMonth === 'ALL' ? 'All time' : monthLabel(selectedMonth);
+}
+function populateMonthSelector(){
+  const sel = document.getElementById('monthSelector');
+  const keysSet = new Set(expenses.map(e=>monthKeyOf(e.datetime)));
+  keysSet.add(currentMonthKey());
+  const keys = Array.from(keysSet).sort().reverse();
+  if(!selectedMonth) selectedMonth = currentMonthKey();
+  const options = ['<option value="ALL">All time</option>']
+    .concat(keys.map(k=>`<option value="${k}">${monthLabel(k)}</option>`));
+  sel.innerHTML = options.join('');
+  sel.value = selectedMonth;
+}
+function onMonthSelectorChange(value){
+  selectedMonth = value;
+  updateHeaderTitle();
+  renderTotals();
+  Object.keys(CATEGORIES).forEach(cat=>renderCategory(cat));
+}
+
+// ---------- tabs ----------
+function switchTab(cat){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.cat===cat));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+cat).classList.add('active');
+}
+
+// ---------- photo modal ----------
+async function viewPhoto(id){
+  const dataUrl = await getPhoto(id);
+  if(!dataUrl){ showToast('Photo not found'); return; }
+  document.getElementById('photoModalImg').src = dataUrl;
+  document.getElementById('photoModal').classList.add('show');
+}
+function closeModal(id){
+  document.getElementById(id).classList.remove('show');
+}
+
+// ---------- delete flow ----------
+function askDelete(id){
+  deleteTargetId = id;
+  document.getElementById('confirmModal').classList.add('show');
+}
+document.getElementById('confirmDeleteBtn').addEventListener('click', async ()=>{
+  if(!deleteTargetId) return;
+  const item = expenses.find(e=>e.id===deleteTargetId);
+  expenses = expenses.filter(e=>e.id!==deleteTargetId);
+  await saveIndex();
+  if(item && item.hasPhoto) await deletePhotoKey(item.id);
+  closeModal('confirmModal');
+  populateMonthSelector();
+  updateHeaderTitle();
+  if(item) renderCategory(item.category);
+  renderTotals();
+  deleteTargetId = null;
+  showToast('Expense deleted');
+});
+
+// ---------- toast ----------
+let toastTimer;
+function showToast(msg){
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toast.classList.remove('show'), 2400);
+}
+
+// ---------- export ----------
+function exportToExcel(){
+  if(expenses.length === 0){
+    showToast('No expenses to export yet');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+
+  // Summary sheet
+  const summaryRows = [['Category','Currency','Total Amount','Number of Entries']];
+  const byCategory = {};
+  Object.keys(CATEGORIES).forEach(c=>byCategory[c]={});
+  expenses.forEach(e=>{
+    byCategory[e.category][e.currency] = byCategory[e.category][e.currency] || {total:0,count:0};
+    byCategory[e.category][e.currency].total += e.amount;
+    byCategory[e.category][e.currency].count += 1;
+  });
+  Object.keys(CATEGORIES).forEach(cat=>{
+    const curEntries = Object.keys(byCategory[cat]);
+    if(curEntries.length===0){
+      summaryRows.push([CATEGORIES[cat], '—', 0, 0]);
+    }else{
+      curEntries.forEach(cur=>{
+        summaryRows.push([CATEGORIES[cat], cur, byCategory[cat][cur].total, byCategory[cat][cur].count]);
+      });
+    }
+  });
+  const grand = {};
+  expenses.forEach(e=>{ grand[e.currency] = (grand[e.currency]||0) + e.amount; });
+  summaryRows.push([]);
+  summaryRows.push(['GRAND TOTAL','','','']);
+  Object.keys(grand).forEach(cur=>{
+    summaryRows.push(['', cur, grand[cur], expenses.filter(e=>e.currency===cur).length]);
+  });
+
+  // Office reimbursement status
+  const officeItems = expenses.filter(e=>e.category==='office');
+  if(officeItems.length > 0){
+    const reimbursedTotals = {}, outstandingTotals = {};
+    officeItems.forEach(e=>{
+      const bucket = e.reimbursed ? reimbursedTotals : outstandingTotals;
+      bucket[e.currency] = (bucket[e.currency]||0) + e.amount;
+    });
+    summaryRows.push([]);
+    summaryRows.push(['OFFICE REIMBURSEMENT STATUS','','','']);
+    summaryRows.push(['Reimbursed','','','']);
+    Object.keys(reimbursedTotals).forEach(cur=> summaryRows.push(['', cur, reimbursedTotals[cur], '']));
+    summaryRows.push(['Outstanding','','','']);
+    Object.keys(outstandingTotals).forEach(cur=> summaryRows.push(['', cur, outstandingTotals[cur], '']));
+  }
+
+  const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+  summarySheet['!cols'] = [{wch:24},{wch:10},{wch:16},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+  // Detail sheet per category
+  Object.keys(CATEGORIES).forEach(cat=>{
+    const isOffice = cat === 'office';
+    const header = ['Date','Time','Description','Amount','Currency','Has Photo'];
+    if(isOffice) header.push('Sub-category','Reimbursed','Reimbursed Date');
+    const rows = [header];
+    const items = expenses.filter(e=>e.category===cat).sort((a,b)=> new Date(a.datetime)-new Date(b.datetime));
+    items.forEach(item=>{
+      const d = new Date(item.datetime);
+      const row = [
+        d.toLocaleDateString(),
+        d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+        item.description,
+        item.amount,
+        item.currency,
+        item.hasPhoto ? 'Yes' : 'No'
+      ];
+      if(isOffice){
+        row.push(subcategoryLabel(item));
+        row.push(item.reimbursed ? 'Yes' : 'No');
+        row.push(item.reimbursedAt ? new Date(item.reimbursedAt).toLocaleString() : '');
+      }
+      rows.push(row);
+    });
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet['!cols'] = isOffice
+      ? [{wch:12},{wch:10},{wch:36},{wch:12},{wch:10},{wch:10},{wch:18},{wch:12},{wch:18}]
+      : [{wch:12},{wch:10},{wch:36},{wch:12},{wch:10},{wch:10}];
+    const sheetName = CATEGORIES[cat].slice(0,31);
+    XLSX.utils.book_append_sheet(wb, sheet, sheetName);
+  });
+
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `expenses_export_${today}.xlsx`);
+  showToast('Excel file downloaded');
+}
+
+// ---------- month-end reminder ----------
+function isNearMonthEnd(){
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  return now.getDate() >= lastDay - 1; // last 2 days of the month
+}
+async function checkReminder(){
+  if(!isNearMonthEnd()) return;
+  const todayStr = new Date().toISOString().slice(0,10);
+  let dismissedDate = null;
+  try{
+    const res = await window.storage.get('reminder-dismissed-date', false);
+    dismissedDate = res ? res.value : null;
+  }catch(e){ /* no dismissal on record */ }
+  if(dismissedDate === todayStr) return;
+  document.getElementById('reminderBanner').classList.add('show');
+}
+async function dismissReminder(){
+  const todayStr = new Date().toISOString().slice(0,10);
+  try{ await window.storage.set('reminder-dismissed-date', todayStr, false); }catch(e){}
+  document.getElementById('reminderBanner').classList.remove('show');
+}
+function exportFromBanner(){
+  exportToExcel();
+  dismissReminder();
+}
+
+// ---------- init ----------
+async function init(){
+  expenses = await loadIndex();
+  populateMonthSelector();
+  updateHeaderTitle();
+  Object.keys(CATEGORIES).forEach(cat=>{
+    buildForm(cat);
+    renderCategory(cat);
+  });
+  renderTotals();
+  checkReminder();
+}
+init();
+</script>
+</body>
+</html>
