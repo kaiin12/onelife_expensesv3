@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
 <style>
   :root{
     --cover:#16332B;
@@ -233,6 +235,15 @@
   .photo-clear{
     background:none;border:none;color:var(--stamp);cursor:pointer;font-size:12px;text-decoration:underline;
   }
+  .ocr-status{
+    width:100%;
+    font-size:12px;
+    color:var(--ink-soft);
+    font-family:'Space Mono',monospace;
+    margin-top:4px;
+  }
+  .ocr-status.detected{color:#2E6B3E;}
+  .ocr-status.failed{color:var(--stamp);}
 
   .submit-btn{
     margin-top:18px;
@@ -724,9 +735,10 @@ function buildForm(cat){
         <label>Receipt photo</label>
         <div class="photo-row">
           <button type="button" class="photo-btn" onclick="triggerPhoto('${cat}')">📷 Take / upload photo</button>
-          <input type="file" accept="image/*" capture="environment" id="photoInput-${cat}" style="display:none;" onchange="handlePhoto(event,'${cat}')">
+          <input type="file" accept="image/*" id="photoInput-${cat}" style="display:none;" onchange="handlePhoto(event,'${cat}')">
           <img class="photo-preview" id="photoPreview-${cat}" style="display:none;">
           <button type="button" class="photo-clear" id="photoClear-${cat}" style="display:none;" onclick="clearPhoto('${cat}')">Remove</button>
+          <div class="ocr-status" id="ocrStatus-${cat}" style="display:none;"></div>
         </div>
       </div>
     </div>
@@ -779,6 +791,7 @@ async function handlePhoto(event, cat){
     preview.src = pendingPhotoDataUrl;
     preview.style.display = 'inline-block';
     document.getElementById('photoClear-'+cat).style.display = 'inline-block';
+    scanReceiptForDateTime(cat, pendingPhotoDataUrl);
   }catch(e){
     showToast('Could not process that photo');
   }
@@ -791,6 +804,97 @@ function clearPhoto(cat){
   preview.src = '';
   document.getElementById('photoClear-'+cat).style.display = 'none';
   document.getElementById('photoInput-'+cat).value = '';
+  const statusEl = document.getElementById('ocrStatus-'+cat);
+  if(statusEl){ statusEl.style.display = 'none'; statusEl.textContent = ''; statusEl.className = 'ocr-status'; }
+}
+
+// ---------- receipt date/time OCR ----------
+function extractDateFromText(text){
+  let m = text.match(/\b(20\d{2})[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](0?[1-9]|[12]\d|3[01])\b/);
+  if(m) return { y:+m[1], mo:+m[2], d:+m[3] };
+
+  m = text.match(/\b(0?[1-9]|[12]\d|3[01])[\/\-\.](0?[1-9]|1[0-2])[\/\-\.](20\d{2}|\d{2})\b/);
+  if(m){
+    let a=+m[1], b=+m[2], y=+m[3];
+    if(y<100) y += 2000;
+    let day, mo;
+    if(a>12){ day=a; mo=b; } else if(b>12){ day=b; mo=a; } else { day=a; mo=b; } // default DD/MM
+    return { y, mo, d:day };
+  }
+
+  const months = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  m = text.match(/\b([0-3]?\d)\s+([A-Za-z]{3,9})\s+(20\d{2})\b/);
+  if(m){
+    const mo = months[m[2].slice(0,3).toLowerCase()];
+    if(mo) return { y:+m[3], mo, d:+m[1] };
+  }
+  m = text.match(/\b([A-Za-z]{3,9})\s+([0-3]?\d),?\s+(20\d{2})\b/);
+  if(m){
+    const mo = months[m[1].slice(0,3).toLowerCase()];
+    if(mo) return { y:+m[3], mo, d:+m[2] };
+  }
+  return null;
+}
+
+function extractTimeFromText(text){
+  const m = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\s*(AM|PM|am|pm)?\b/);
+  if(!m) return null;
+  let h = +m[1];
+  const min = +m[2];
+  const ampm = m[3];
+  if(ampm){
+    const upper = ampm.toUpperCase();
+    if(upper === 'PM' && h < 12) h += 12;
+    if(upper === 'AM' && h === 12) h = 0;
+  }
+  if(h > 23) return null;
+  return { h, min };
+}
+
+function buildLocalDatetimeValue(dateObj, timeObj){
+  const y = dateObj.y, mo = dateObj.mo, d = dateObj.d;
+  const now = new Date();
+  const h = timeObj ? timeObj.h : now.getHours();
+  const min = timeObj ? timeObj.min : now.getMinutes();
+  const dt = new Date(y, mo-1, d, h, min);
+  if(isNaN(dt) || dt.getFullYear()!==y || dt.getMonth()!==mo-1 || dt.getDate()!==d) return null;
+  const pad = n => String(n).padStart(2,'0');
+  return `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(min)}`;
+}
+
+async function scanReceiptForDateTime(cat, dataUrl){
+  const statusEl = document.getElementById('ocrStatus-'+cat);
+  if(!statusEl) return;
+  statusEl.className = 'ocr-status';
+  statusEl.style.display = 'block';
+  statusEl.textContent = '🔍 Scanning receipt for date & time…';
+  try{
+    if(typeof Tesseract === 'undefined'){
+      statusEl.textContent = "Couldn't load the scanner — please enter the date manually.";
+      statusEl.className = 'ocr-status failed';
+      return;
+    }
+    const { data } = await Tesseract.recognize(dataUrl, 'eng');
+    const text = data && data.text ? data.text : '';
+    const dateObj = extractDateFromText(text);
+    const timeObj = extractTimeFromText(text);
+    if(dateObj){
+      const val = buildLocalDatetimeValue(dateObj, timeObj);
+      if(val){
+        const form = document.getElementById('form-'+cat);
+        const input = form.querySelector('input[name=datetime]');
+        if(input) input.value = val;
+        statusEl.textContent = `✓ Detected ${timeObj ? 'date & time' : 'date'}: ${formatDateTime(val)} — check and adjust if needed.`;
+        statusEl.className = 'ocr-status detected';
+        return;
+      }
+    }
+    statusEl.textContent = "Couldn't detect a date on this receipt — please enter it manually.";
+    statusEl.className = 'ocr-status failed';
+  }catch(err){
+    statusEl.textContent = "Scan failed — please enter the date manually.";
+    statusEl.className = 'ocr-status failed';
+  }
 }
 
 async function handleSubmit(e, cat){
