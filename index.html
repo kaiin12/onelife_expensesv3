@@ -666,29 +666,32 @@ let deleteTargetId = null;
 let expandedMonths = {}; // session-only accordion state, keyed "cat|YYYY-MM"
 let selectedMonth = null; // 'YYYY-MM' or 'ALL'
 
-// ---------- storage helpers ----------
+// ---------- storage helpers (browser localStorage — this app is deployed standalone) ----------
 async function loadIndex(){
   try{
-    const res = await window.storage.get('expenses-index', false);
-    return res && res.value ? JSON.parse(res.value) : [];
+    const raw = localStorage.getItem('expenses-index');
+    return raw ? JSON.parse(raw) : [];
   }catch(e){ return []; }
 }
 async function saveIndex(){
   try{
-    await window.storage.set('expenses-index', JSON.stringify(expenses), false);
-  }catch(e){ showToast('Could not save — storage error'); }
+    localStorage.setItem('expenses-index', JSON.stringify(expenses));
+  }catch(e){ showToast('Could not save — your browser storage may be full'); }
 }
 async function getPhoto(id){
   try{
-    const res = await window.storage.get('photo:'+id, false);
-    return res ? res.value : null;
+    return localStorage.getItem('photo:'+id);
   }catch(e){ return null; }
 }
 async function savePhoto(id, dataUrl){
-  try{ await window.storage.set('photo:'+id, dataUrl, false); }catch(e){}
+  try{
+    localStorage.setItem('photo:'+id, dataUrl);
+  }catch(e){
+    showToast('Could not save the photo — your browser storage may be full');
+  }
 }
 async function deletePhotoKey(id){
-  try{ await window.storage.delete('photo:'+id, false); }catch(e){}
+  try{ localStorage.removeItem('photo:'+id); }catch(e){}
 }
 
 // ---------- form building ----------
@@ -1294,15 +1297,14 @@ async function checkReminder(){
   const todayStr = new Date().toISOString().slice(0,10);
   let dismissedDate = null;
   try{
-    const res = await window.storage.get('reminder-dismissed-date', false);
-    dismissedDate = res ? res.value : null;
+    dismissedDate = localStorage.getItem('reminder-dismissed-date');
   }catch(e){ /* no dismissal on record */ }
   if(dismissedDate === todayStr) return;
   document.getElementById('reminderBanner').classList.add('show');
 }
 async function dismissReminder(){
   const todayStr = new Date().toISOString().slice(0,10);
-  try{ await window.storage.set('reminder-dismissed-date', todayStr, false); }catch(e){}
+  try{ localStorage.setItem('reminder-dismissed-date', todayStr); }catch(e){}
   document.getElementById('reminderBanner').classList.remove('show');
 }
 function exportFromBanner(){
